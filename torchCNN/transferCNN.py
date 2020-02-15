@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as datautils
 
-from torchvision import datasets, transforms
+from torchvision import datasets, transforms, models
 from torch.optim.lr_scheduler import StepLR
 
 # resolves issue with OpenMP on mac
@@ -14,37 +14,24 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
-class CifarCNN(nn.Module):
+class TransferCNN(nn.Module):
 
     def __init__(self):
 
         super().__init__()
 
-        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
+        self.vgg16 = models.vgg16(pretrained=True)
 
-        self.pool = nn.MaxPool2d(2, 2)
+        for param in self.vgg16.features.parameters():
+            param.requires_grad = False
 
-        self.fc1 = nn.Linear(64 * 4 * 4, 500)
-        self.fc2 = nn.Linear(500, 10)
-
-        self.dropout = nn.Dropout(0.25)
+        in_features = self.vgg16.classifier[6].in_features
+        self.vgg16.classifier[6] = nn.Linear(in_features, 10)
 
     def forward(self, x):
 
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = self.pool(F.relu(self.conv3(x)))
-
-        x = x.view(-1, 64 * 4 * 4)
-
-        x = self.dropout(x)
-        x = F.relu(self.fc1(x))
-
-        x = self.dropout(x)
-
-        x = self.fc2(x)
+        x = self.vgg16(x)
+        x = F.log_softmax(x, dim=1)
 
         return x
 
@@ -110,7 +97,7 @@ def main():
 
     # read command line arguments
     parser = argparse.ArgumentParser(
-        description='CIFAR-10 CNN Example'
+        description='Transfer Learning CNN Example'
     )
 
     parser.add_argument('--batch-size', type=int, default=20, metavar='N',
@@ -174,7 +161,7 @@ def main():
                                       **kwargs)
 
     # define model / optimizer / loss criterion etc.
-    model = CifarCNN().to(device)
+    model = TransferCNN().to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
     criterion = nn.CrossEntropyLoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
@@ -191,14 +178,14 @@ def main():
                       ''.format(min_test_loss, test_loss))
 
             min_test_loss = test_loss
-            torch.save(model.state_dict(), 'cifarCNN_checkpoint.pt')
+            torch.save(model.state_dict(), 'transferCNN_checkpoint.pt')
 
         scheduler.step()
 
     # load best model and save
     if args.save_model:
-        model.load_state_dict(torch.load('cifarCNN_checkpoint.pt'))
-        torch.save(model.state_dict(), 'cifarCNN.pt')
+        model.load_state_dict(torch.load('transferCNN_checkpoint.pt'))
+        torch.save(model.state_dict(), 'transferCNN.pt')
 
 
 if __name__ == '__main__':
