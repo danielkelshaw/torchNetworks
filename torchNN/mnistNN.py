@@ -10,7 +10,7 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
 
-class NeuralNetwork(nn.Module):
+class mnistNN(nn.Module):
 
     def __init__(self):
 
@@ -134,7 +134,7 @@ def main():
     testloader = datautils.DataLoader(testset, batch_size=args.testbatch_size)
 
     # define model / optimizer / loss criterion etc.
-    model = NeuralNetwork().to(device)
+    model = mnistNN().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.NLLLoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
