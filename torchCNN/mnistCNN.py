@@ -10,7 +10,7 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
 
-class mnistCNN(nn.Module):
+class MnistCNN(nn.Module):
 
     def __init__(self):
 
@@ -46,6 +46,8 @@ class mnistCNN(nn.Module):
 
 def train(args, model, device, train_loader, optimizer, criterion, epoch):
 
+    train_loss = 0.0
+
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -54,6 +56,7 @@ def train(args, model, device, train_loader, optimizer, criterion, epoch):
 
         output = model(data)
         loss = criterion(output, target)
+        train_loss += loss.item() * data.size(0)
         loss.backward()
 
         optimizer.step()
@@ -63,6 +66,11 @@ def train(args, model, device, train_loader, optimizer, criterion, epoch):
                   ''.format(epoch, batch_idx * len(data),
                             len(train_loader.dataset),
                             100 * batch_idx / len(train_loader), loss.item()))
+
+    train_loss /= len(train_loader.dataset)
+
+    print('\nTrain set: Average loss: {:.6f}'
+          ''.format(train_loss))
 
 
 def test(model, device, test_loader, criterion):
@@ -84,7 +92,7 @@ def test(model, device, test_loader, criterion):
 
     test_loss /= len(test_loader.dataset)
 
-    print('\nTest set: Average loss: {:.6f}, '
+    print('Test set: Average loss: {:.6f}, '
           'Accuracy: {}/{} ({:.0f}%)\n'
           ''.format(test_loss, correct, len(test_loader.dataset),
                     100. * correct / len(test_loader.dataset)))
@@ -123,6 +131,7 @@ def main():
     # set training device
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
+    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
     # define transforms
     transform = transforms.Compose([
@@ -141,11 +150,16 @@ def main():
                              download=True,
                              transform=transform)
 
-    trainloader = datautils.DataLoader(trainset, batch_size=args.batch_size)
-    testloader = datautils.DataLoader(testset, batch_size=args.testbatch_size)
+    trainloader = datautils.DataLoader(trainset,
+                                       batch_size=args.batch_size,
+                                       **kwargs)
+
+    testloader = datautils.DataLoader(testset,
+                                      batch_size=args.testbatch_size,
+                                      **kwargs)
 
     # define model / optimizer / loss criterion etc.
-    model = mnistCNN().to(device)
+    model = MnistCNN().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.NLLLoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
@@ -162,14 +176,14 @@ def main():
                       ''.format(min_test_loss, test_loss))
 
             min_test_loss = test_loss
-            torch.save(model.state_dict(), 'mnist_cnn_checkpoint.pt')
+            torch.save(model.state_dict(), 'mnistCNN_checkpoint.pt')
 
         scheduler.step()
 
     # load best model and save
     if args.save_model:
-        model.load_state_dict(torch.load('mnist_cnn_checkpoint.pt'))
-        torch.save(model.state_dict(), 'mnist_cnn.pt')
+        model.load_state_dict(torch.load('mnistCNN_checkpoint.pt'))
+        torch.save(model.state_dict(), 'mnistCNN.pt')
 
 
 if __name__ == '__main__':
