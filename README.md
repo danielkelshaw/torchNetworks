@@ -5,7 +5,7 @@ This repository serves as a reference for a number of deep learning architecture
 
 #### Networks:
 
-- [ ] Neural Networks
+- [x] Neural Networks
 - [ ] Convolutional Neural Networks
 - [ ] Recurrent Neural Networks
 - [ ] Generative Adversavrial Networks
