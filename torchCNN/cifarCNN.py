@@ -9,30 +9,44 @@ import torch.utils.data as datautils
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
+# resolves issue with OpenMP on mac
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-class MnistNN(nn.Module):
+
+class CifarCNN(nn.Module):
 
     def __init__(self):
 
         super().__init__()
 
-        self.fc1 = nn.Linear(784, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 10)
+        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
 
-        self.dropout = nn.Dropout(0.3)
+        self.pool = nn.MaxPool2d(2, 2)
+
+        self.fc1 = nn.Linear(64 * 4 * 4, 500)
+        self.fc2 = nn.Linear(500, 10)
+
+        self.dropout = nn.Dropout(0.25)
 
     def forward(self, x):
 
-        x = torch.flatten(x, 1)
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.pool(F.relu(self.conv3(x)))
 
-        x = F.relu(self.fc1(x))
+        x = x.view(-1, 64 * 4 * 4)
+
         x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        output = F.log_softmax(x, dim=1)
+        x = F.relu(self.fc1(x))
 
-        return output
+        x = self.dropout(x)
+
+        x = self.fc2(x)
+
+        return x
 
 
 def train(args, model, device, train_loader, optimizer, criterion, epoch):
@@ -47,7 +61,7 @@ def train(args, model, device, train_loader, optimizer, criterion, epoch):
 
         output = model(data)
         loss = criterion(output, target)
-        train_loss += loss.item() * data.shape(0)
+        train_loss += loss.item() * data.size(0)
         loss.backward()
 
         optimizer.step()
@@ -77,7 +91,7 @@ def test(model, device, test_loader, criterion):
 
             output = model(data)
             loss = criterion(output, target)
-            test_loss += loss.item() * data.size(0)
+            test_loss += loss.item()
 
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
@@ -87,7 +101,7 @@ def test(model, device, test_loader, criterion):
     print('Test set: Average loss: {:.6f}, '
           'Accuracy: {}/{} ({:.0f}%)\n'
           ''.format(test_loss, correct, len(test_loader.dataset),
-                    100. * correct / len(test_loader.dataset)))
+                    100 * correct / len(test_loader.dataset)))
 
     return test_loss
 
@@ -95,10 +109,12 @@ def test(model, device, test_loader, criterion):
 def main():
 
     # read command line arguments
-    parser = argparse.ArgumentParser(description='Neural Network Example')
+    parser = argparse.ArgumentParser(
+        description='CIFAR-10 CNN Example'
+    )
 
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+    parser.add_argument('--batch-size', type=int, default=20, metavar='N',
+                        help='input batch size for training (default: 20)')
     parser.add_argument('--testbatch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=15, metavar='N',
@@ -124,21 +140,30 @@ def main():
     kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
     # define transforms
-    transform = transforms.Compose([
+    train_transform = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,))
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
+    ])
+
+    test_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
     # load / process data
-    trainset = datasets.MNIST('./data',
-                              train=True,
-                              download=True,
-                              transform=transform)
+    trainset = datasets.CIFAR10('./data',
+                                train=True,
+                                download=True,
+                                transform=train_transform)
 
-    testset = datasets.MNIST('./data',
-                             train=False,
-                             download=True,
-                             transform=transform)
+    testset = datasets.CIFAR10('./data',
+                               train=False,
+                               download=True,
+                               transform=test_transform)
 
     trainloader = datautils.DataLoader(trainset,
                                        batch_size=args.batch_size,
@@ -149,9 +174,9 @@ def main():
                                       **kwargs)
 
     # define model / optimizer / loss criterion etc.
-    model = MnistNN().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.NLLLoss()
+    model = CifarCNN().to(device)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
+    criterion = nn.CrossEntropyLoss()
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     # run training
@@ -166,14 +191,14 @@ def main():
                       ''.format(min_test_loss, test_loss))
 
             min_test_loss = test_loss
-            torch.save(model.state_dict(), 'mnistNN_checkpoint.pt')
+            torch.save(model.state_dict(), 'cifarCNN_checkpoint.pt')
 
         scheduler.step()
 
     # load best model and save
     if args.save_model:
-        model.load_state_dict(torch.load('mnistNN_checkpoint.pt'))
-        torch.save(model.state_dict(), 'mnistNN.pt')
+        model.load_state_dict(torch.load('cifarCNN_checkpoint.pt'))
+        torch.save(model.state_dict(), 'cifarCNN.pt')
 
 
 if __name__ == '__main__':
