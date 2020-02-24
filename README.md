@@ -7,6 +7,6 @@ This repository serves as a reference for a number of deep learning architecture
 
 - [x] Neural Networks
 - [x] Convolutional Neural Networks
-- [ ] Recurrent Neural Networks
-- [x] Generative Adversavrial Networks
-- [ ] Variational Autoencoders
+- [x] Recurrent Neural Networks
+- [x] Generative Adversarial Networks
+- [x] Variational Autoencoders
